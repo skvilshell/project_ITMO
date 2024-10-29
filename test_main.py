@@ -50,6 +50,12 @@ def db_connection():
     yield connection
     connection.close()
 
+def add_event(name, price, date, free_slots, db_connection):
+    """Вспомогательная функция для добавления события в базу данных для тестов."""
+    cursor = db_connection.cursor()
+    cursor.execute("INSERT INTO events (name, price, date, free_slots) VALUES (?, ?, ?, ?)", (name, price, date, free_slots))
+    db_connection.commit()
+
 def test_view_events_no_events(db_connection):
     """Тест для функции view_events без доступных спектаклей."""
     with patch('builtins.print') as mock_print:
@@ -57,7 +63,7 @@ def test_view_events_no_events(db_connection):
         mock_print.assert_called_with("Нет доступных спектаклей.")
 
 def test_view_events_with_events(db_connection):
-    add_event("Test Event", 100.0, "2024-11-01", 5)
+    add_event("Test Event", 100.0, "2024-11-01", 5, db_connection)
 
     with patch('builtins.print') as mocked_print:
         view_events()  # Вызываем функцию
@@ -65,13 +71,10 @@ def test_view_events_with_events(db_connection):
 
 def test_register_customer(db_connection):
     """Тест для функции register_customer."""
-    cursor = db_connection.cursor()
-    cursor.execute("INSERT INTO events (name, price, date, free_slots) VALUES (?, ?, ?, ?)",
-                   ("Test Event", 100.0, "2024-11-01", 5))
-    db_connection.commit()
+    add_event("Test Event", 100.0, "2024-11-01", 5, db_connection)
 
     with patch('builtins.input', side_effect=["John Doe", 30, "john.doe@example.com", "1234567890"]), patch('builtins.print') as mock_print:
-        register_customer(1, "Test Event", 100.0)
+        register_customer(1, "Test Event", 100.0)  # Указываем ID события
         mock_print.assert_called_with("Регистрация завершена, билет успешно куплен!")
 
 def test_cancel_ticket_no_order(db_connection):
@@ -81,12 +84,12 @@ def test_cancel_ticket_no_order(db_connection):
         mock_print.assert_called_with("Заказ с таким номером не найден.")
 
 def test_cancel_ticket_with_order(db_connection):
-    add_event("Test Event", 100.0, "2023-10-01", 5)
+    add_event("Test Event", 100.0, "2023-10-01", 5, db_connection)
     cursor = db_connection.cursor()
     cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
-    cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))
+    cursor.execute("INSERT INTO orders (customer_id, event_id, event_name, event_price) VALUES (?, ?, ?, ?)", (1, 1, "Test Event", 100.0))
     db_connection.commit()
     
-    result = cancel_ticket(1)  # Указываем ID заказа для отмены
-    assert result == 1  # Ожидаем успешное удаление
-
+    with patch('builtins.input', side_effect=["1"]), patch('builtins.print') as mock_print:
+        result = cancel_ticket()  # Указываем ID заказа для отмены
+        mock_print.assert_called_with("Заказ успешно отменен.")
