@@ -1,6 +1,5 @@
 import pytest
 import sqlite3
-from customers_modules import view_events, register_customer, cancel_ticket
 from admin_modules import (
     add_event,
     delete_event,
@@ -57,7 +56,7 @@ def db_connection():
 
 def test_add_event(db_connection):
     """Тест для функции add_event."""
-    add_event("Test Event", 100.0, "2024-11-01", 5)
+    add_event(db_connection, "Test Event", 100.0, "2024-11-01", 5)
 
     cursor = db_connection.cursor()
     cursor.execute("SELECT * FROM events WHERE name = 'Test Event'")
@@ -69,16 +68,16 @@ def test_add_event(db_connection):
 
 def test_delete_event(db_connection):
     """Тест для функции delete_event."""
-    add_event("Test Event", 100.0, "2024-11-01", 5)
+    add_event(db_connection, "Test Event", 100.0, "2024-11-01", 5)
 
     cursor = db_connection.cursor()
     cursor.execute("SELECT * FROM events WHERE name = 'Test Event'")
     event = cursor.fetchone()
-    
+
     assert event is not None  # Убедимся, что событие было добавлено успешно
     event_id = event[0]
 
-    delete_event(event_id)
+    delete_event(db_connection, event_id)
 
     cursor.execute("SELECT * FROM events WHERE id = ?", (event_id,))
     event_after_deletion = cursor.fetchone()
@@ -87,10 +86,10 @@ def test_delete_event(db_connection):
 
 def test_get_current_events(db_connection):
     """Тест для функции get_current_events."""
-    add_event("Current Event", 100.0, "2024-11-01", 5)  # Актуальное
-    add_event("Expired Event", 50.0, "2020-01-01", 0)  # Неактуальное
+    add_event(db_connection, "Current Event", 100.0, "2024-11-01", 5)  # Актуальное
+    add_event(db_connection, "Expired Event", 50.0, "2020-01-01", 0)  # Неактуальное
 
-    events = get_current_events()
+    events = get_current_events(db_connection)
 
     assert len(events) == 1  # Должен вернуть только "Current Event"
     assert events[0][1] == "Current Event"  # Проверка по названию
@@ -101,7 +100,7 @@ def test_get_all_customers(db_connection):
     cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
     db_connection.commit()
     
-    customers = get_all_customers()
+    customers = get_all_customers(db_connection)
 
     assert len(customers) == 1
     assert customers[0][1] == "John Doe"
@@ -109,13 +108,13 @@ def test_get_all_customers(db_connection):
 def test_get_customers_for_event(db_connection):
     """Тест для функции get_customers_for_event."""
     cursor = db_connection.cursor()
-    add_event("Test Event", 100.0, "2024-11-01", 5)
-    
+    add_event(db_connection, "Test Event", 100.0, "2024-11-01", 5)
+
     cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
-    cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))
+    cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))  # Заказ для события
     db_connection.commit()
-    
-    customers = get_customers_for_event(1)
+
+    customers = get_customers_for_event(db_connection, 1)
 
     assert len(customers) == 1
     assert customers[0][1] == "John Doe"
@@ -123,35 +122,43 @@ def test_get_customers_for_event(db_connection):
 def test_get_customers_not_for_event(db_connection):
     """Тест для функции get_customers_not_for_event."""
     cursor = db_connection.cursor()
-    cursor.execute("INSERT INTO events (name, price, date, free_slots) VALUES (?, ?, ?, ?)", ("Test Event", 100.0, "2024-11-01", 5))
+    add_event(db_connection, "Test Event", 100.0, "2024-11-01", 5)
+    
     cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
     cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))  # Классический случай
     
     cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("Jane Doe", 25, "jane@example.com", "0987654321"))
     db_connection.commit()
     
-    customers = get_customers_not_for_event(1)
+    customers = get_customers_not_for_event(db_connection, 1)
 
     assert len(customers) == 1
     assert customers[0][1] == "Jane Doe"
 
 def test_get_events_ranked_by_tickets(db_connection):
     """Тест для функции get_events_ranked_by_tickets."""
-    add_event("Highly Popular Event", 100.0, "2024-11-01", 5)
-    # Добавьте дополнительные заказы и события, чтобы протестировать
+    add_event(db_connection, "Highly Popular Event", 100.0, "2024-11-01", 5)
 
-    ranked_events = get_events_ranked_by_tickets()
+    cursor = db_connection.cursor()
+    cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
+    cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))
+    db_connection.commit()
+
+    ranked_events = get_events_ranked_by_tickets(db_connection)
 
     assert len(ranked_events) == 1
     assert ranked_events[0][0] == "Highly Popular Event"
 
 def test_get_events_ranked_by_revenue(db_connection):
     """Тест для функции get_events_ranked_by_revenue."""
-    add_event("Test Event", 100.0, "2024-11-01", 5)
-    # Добавьте заказы, чтобы протестировать доходы
+    add_event(db_connection, "Test Event", 100.0, "2024-11-01", 5)
 
-    ranked_events = get_events_ranked_by_revenue()
+    cursor = db_connection.cursor()
+    cursor.execute("INSERT INTO customers (name, age, email, phone) VALUES (?, ?, ?, ?)", ("John Doe", 30, "john@example.com", "1234567890"))
+    cursor.execute("INSERT INTO orders (customer_id, event_id) VALUES (?, ?)", (1, 1))
+    db_connection.commit()
+
+    ranked_events = get_events_ranked_by_revenue(db_connection)
 
     assert len(ranked_events) == 1
     assert ranked_events[0][0] == "Test Event"
-
